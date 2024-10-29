@@ -6,12 +6,11 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"os/signal"
 	"rabbit_test/internal/comport"
 	"rabbit_test/internal/rabbit"
 	"rabbit_test/internal/reader"
 	"rabbit_test/internal/sender"
-	"syscall"
+	"rabbit_test/internal/tools"
 )
 
 type AppConfig struct {
@@ -47,6 +46,7 @@ func main() {
 	if acfg.PortName == "" || acfg.ClientId == "" || acfg.ChannelName == "" {
 		log.Fatal("port-name, client-id, channel-name are required")
 	}
+
 	mctx, mcancel := context.WithCancel(context.Background()) // create a context for the main goroutine
 	defer mcancel()
 
@@ -55,27 +55,12 @@ func main() {
 
 	snd := sender.NewSender(acfg.ClientId, acfg.ChannelName, rb.Ch, logger)
 	rdr := reader.NewReader(acfg.ClientId, acfg.ChannelName, rb.Ch, logger)
+
 	port := comport.NewPort(acfg.PortName, 9600, logger)
 	// defer port.Close() // close the port
 
 	//-----------------------------------------------------------------
-	go func() {
-		exit := make(chan os.Signal, 1)
-		signal.Notify(exit,
-			syscall.SIGINT,
-			syscall.SIGTERM,
-			syscall.SIGHUP,
-			syscall.SIGQUIT,
-		)
-		select {
-		case s := <-exit:
-			logger.Info("received signal: ", "syscal", s.Signal)
-			logger.Info("shutting down")
-			mcancel()
-		case <-mctx.Done():
-			logger.Info("shutting down")
-		}
-	}()
+	go tools.CtrlC(mctx, mcancel, logger)
 
 	go port.ListenToWrite(mctx)
 	go port.ListenToRead(mctx)
@@ -83,15 +68,6 @@ func main() {
 	go snd.Listen(mctx, port.ReadData)
 	go rdr.Listen(mctx, port.WriteData)
 
-	// for {
-	// 	select {
-	// 	case <-mctx.Done():
-	// 		return
-	// 	case message := <-data:
-	// 		logger.Info("got new message", "message", message) // receive a message
-	// 		port.Write(message)
-	// 	}
-
-	// }
 	<-mctx.Done()
+	logger.Info("all done, bye-bye")
 }

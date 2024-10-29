@@ -63,9 +63,13 @@ func (r *Reader) Listen(ctx context.Context, data chan []byte) {
 		select {
 		case <-ctx.Done():
 			return
-		case message := <-r.Messages:
-			if message.ReplyTo != r.Name {
-				r.logger.Debug("received message", "message", message.Body, "from", message.ReplyTo)
+		case message, ok := <-r.Messages:
+			if !ok {
+				//TODO
+				// похоже что канал закрыт, кролик упал,  надо перезапускаться
+			}
+			if message.Headers["ReplyTo"] != r.Name {
+				r.logger.Debug("received message", "message", message.Body, "from", message.Headers["ReplyTo"])
 				data <- []byte(message.Body)
 			}
 		}

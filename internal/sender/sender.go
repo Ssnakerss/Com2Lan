@@ -57,9 +57,11 @@ func (s *Sender) Send(msg string) error {
 		false,      //mandatory
 		false,      //immediate
 		amqp.Publishing{
-			ReplyTo:     s.Name,
 			ContentType: "text/plain",
-			Body:        []byte(msg),
+			Headers: amqp.Table{
+				"ReplyTo": s.Name,
+			},
+			Body: []byte(msg),
 		},
 	)
 }

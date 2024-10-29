@@ -1,0 +1,54 @@
+<html lang="RU">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<title>RabbitMQ</title>
+
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+<script type="text/javascript">
+    var client;
+    var subscription;
+    const queue = '/exchange/COM2LAN' //'/queue/myqueue'
+
+
+    function onConnect() {
+        console.log('Connected to RabbitMQ');
+        console.log('Subscribing .....');
+        subscription = client.subscribe(queue, onMessageReceived);
+        console.log('Subscribed!');
+    }
+
+    function onError(error) {
+        console.error('Error connecting to RabbitMQ:', error);
+        console.log("reconnecting.....");
+
+        ConnectToRabbit();
+    }
+
+    function onMessageReceived(message) {
+        console.log('Received message:', message.body);
+    }
+
+    function ConnectToRabbit() {
+        client = Stomp.client('ws://localhost:15674/ws');
+        client.connect('guest', 'guest', onConnect, onError, '/');
+
+    }
+
+    function Send(message) {
+        
+        client.send(queue , {ReplyTo:"WEB"}, message);
+    }
+
+
+</script>
+
+<body>
+
+    <button type="button" onclick="ConnectToRabbit()">Connect</button>
+    <button type="button" onclick="Send('\x02Hello, RabbitMQ!\x03')">Send</button>
+</body>
+
+</html>
