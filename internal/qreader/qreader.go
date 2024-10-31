@@ -1,14 +1,15 @@
-package reader
+package qreader
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
-	"rabbit_test/internal/tools"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type Reader struct {
+type QReader struct {
 	ch       *amqp.Channel
 	Name     string
 	ChanName string
@@ -17,8 +18,8 @@ type Reader struct {
 	logger   *slog.Logger
 }
 
-func NewReader(name, chanName string, ch *amqp.Channel, logger *slog.Logger) *Reader {
-	r := Reader{
+func New(name, chanName string, ch *amqp.Channel, logger *slog.Logger) (*QReader, error) {
+	r := QReader{
 		ch:       ch,
 		Name:     name,
 		ChanName: chanName,
@@ -33,7 +34,9 @@ func NewReader(name, chanName string, ch *amqp.Channel, logger *slog.Logger) *Re
 		false, //no-wait
 		nil,   //arguments
 	)
-	tools.Fail(err, name+":queue")
+	if err != nil {
+		return nil, err
+	}
 
 	err = ch.QueueBind(
 		r.queue.Name,
@@ -42,7 +45,9 @@ func NewReader(name, chanName string, ch *amqp.Channel, logger *slog.Logger) *Re
 		false,
 		nil,
 	)
-	tools.Fail(err, name+": queue bind")
+	if err != nil {
+		return nil, err
+	}
 
 	r.Messages, err = ch.Consume(
 		r.queue.Name, // queue
@@ -53,20 +58,20 @@ func NewReader(name, chanName string, ch *amqp.Channel, logger *slog.Logger) *Re
 		false,        // no-wait
 		nil,          // args
 	)
-	tools.Fail(err, name+": get messages")
 
-	return &r
+	return &r, err
 }
 
-func (r *Reader) Listen(ctx context.Context, data chan []byte) {
+func (r *QReader) Listen(ctx context.Context, data chan []byte) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			r.logger.Warn("queuereader stop listen ", "port", r.Name)
+			return nil
 		case message, ok := <-r.Messages:
 			if !ok {
-				//TODO
-				// похоже что канал закрыт, кролик упал,  надо перезапускаться
+				r.logger.Warn("queue message channel closed, qreader stop listen ", "channel", r.Name)
+				return fmt.Errorf("queuewriter:%w", errors.New("queue message channel closed"))
 			}
 			if message.Headers["ReplyTo"] != r.Name {
 				r.logger.Debug("received message", "message", message.Body, "from", message.Headers["ReplyTo"])

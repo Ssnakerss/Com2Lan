@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"context"
 	"log/slog"
-	"rabbit_test/internal/tools"
-	"strconv"
 
 	"github.com/tarm/serial"
 )
@@ -19,10 +17,12 @@ type Com struct {
 	logger    *slog.Logger
 }
 
-func NewPort(comPortName string, baud int, logger *slog.Logger) *Com {
+func New(comPortName string, baud int, logger *slog.Logger) (*Com, error) {
 	c := &serial.Config{Name: comPortName, Baud: baud}
 	s, err := serial.OpenPort(c)
-	tools.Fail(err, "comport open error "+comPortName+":"+strconv.Itoa(baud))
+	if err != nil {
+		return nil, err
+	}
 
 	com := Com{
 		name:      comPortName,
@@ -32,18 +32,17 @@ func NewPort(comPortName string, baud int, logger *slog.Logger) *Com {
 		Port:      s,
 		logger:    logger,
 	}
-	return &com
+	return &com, nil
 }
 
-func (c *Com) ListenToRead(ctx context.Context) {
+func (c *Com) ComToQueue(ctx context.Context) {
 	c.logger.Info("start listen to read", "port", c.name)
 	reader := bufio.NewReader(c.Port)
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Warn("comport stop listen ", "port", c.name)
+			c.logger.Warn("ComToQueue stop listen ", "port", c.name)
 			return
-
 		default:
 			data, err := reader.ReadBytes(0x03)
 			if err != nil {
@@ -58,12 +57,12 @@ func (c *Com) ListenToRead(ctx context.Context) {
 	}
 }
 
-func (c *Com) ListenToWrite(ctx context.Context) {
+func (c *Com) QueueToCom(ctx context.Context) {
 	c.logger.Info("start listen to write", "port", c.name)
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Warn("comport stop listen ", "port", c.name)
+			c.logger.Warn("QueueToCom stop listen ", "port", c.name)
 			return
 		case data := <-c.WriteData:
 			c.logger.Info("write", "port", c.name, "data", string(data))

@@ -1,22 +1,23 @@
-package sender
+package qwriter
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
-	"rabbit_test/internal/tools"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type Sender struct {
+type QWriter struct {
 	ch       *amqp.Channel
 	Name     string
 	ChanName string
 	logger   *slog.Logger
 }
 
-func NewSender(name, chanName string, ch *amqp.Channel, logger *slog.Logger) *Sender {
-	s := Sender{
+func New(name, chanName string, ch *amqp.Channel, logger *slog.Logger) (*QWriter, error) {
+	s := QWriter{
 		Name:     name,
 		ChanName: chanName,
 		ch:       ch,
@@ -31,26 +32,30 @@ func NewSender(name, chanName string, ch *amqp.Channel, logger *slog.Logger) *Se
 		false,    //noWait
 		nil,
 	)
-	tools.Fail(err, "exchange declare")
-	return &s
+	return &s, err
 }
 
-func (s *Sender) Listen(ctx context.Context, data chan []byte) {
+func (s *QWriter) Listen(ctx context.Context, data chan []byte) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case data := <-data:
+			s.logger.Warn("context canceled, queuewriter stop listen ", "channel", s.Name)
+			return nil
+		case data, ok := <-data:
+			if !ok {
+				s.logger.Warn("input channel closed, queuewriter stop listen ", "channel", s.Name)
+				return fmt.Errorf("queuewriter:%w", errors.New("input channel closed"))
+			}
 			s.logger.Debug("sending ", "message", string(data))
 			err := s.Send(string(data))
 			if err != nil {
-				s.logger.Error("send error", "error", err)
+				s.logger.Error("queuewriter send error", "channel", s.Name, "error", err)
 			}
 		}
 	}
 }
 
-func (s *Sender) Send(msg string) error {
+func (s *QWriter) Send(msg string) error {
 	return s.ch.Publish(
 		s.ChanName, //exchange
 		"",         //key
@@ -66,6 +71,6 @@ func (s *Sender) Send(msg string) error {
 	)
 }
 
-func (s *Sender) Delete() error {
+func (s *QWriter) Delete() error {
 	return s.ch.ExchangeDelete(s.ChanName, false, false)
 }
