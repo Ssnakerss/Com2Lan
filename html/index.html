@@ -34,12 +34,10 @@
     function ConnectToRabbit() {
         client = Stomp.client('ws://localhost:15674/ws');
         client.connect('guest', 'guest', onConnect, onError, '/');
-
     }
 
     function Send(message) {
-        
-        client.send(queue , {ReplyTo:"WEB"}, message);
+                client.send(queue , {ReplyTo:"WEB"}, message);
     }
 
 

@@ -32,7 +32,7 @@ func CtrlC(ctx context.Context, cancel context.CancelFunc, logger *slog.Logger) 
 	}
 }
 
-func Connect(acfg *Config, logger *slog.Logger) (
+func Connect(ctx context.Context, acfg *Config, logger *slog.Logger) (
 	*rabbit.RabbitChannel,
 	*qwriter.QWriter,
 	*qreader.QReader,
@@ -45,37 +45,50 @@ func Connect(acfg *Config, logger *slog.Logger) (
 
 	err := fmt.Errorf("dummy")
 	for err != nil {
-		rb, err = rabbit.NewRabbitChannel(acfg.RabbitURL)
-		if err != nil {
-			logger.Error("rabbit", "error", err.Error())
-		} else {
-			logger.Info("rabbit connected")
 
-			wrt, err = qwriter.New(acfg.ClientId, acfg.ChannelName, rb.Ch, logger)
+		select {
+		case <-ctx.Done():
+			logger.Info("shutting down")
+			return nil, nil, nil, nil
+		default:
+			rb, err = rabbit.NewRabbitChannel(acfg.RabbitURL)
 			if err != nil {
-				logger.Error("qwriter", "error", err.Error())
+				logger.Error("rabbit", "error", err.Error())
 			} else {
-				logger.Info("qwriter created")
-			}
+				logger.Info("rabbit connected")
 
-			rdr, err = qreader.New(acfg.ClientId, acfg.ChannelName, rb.Ch, logger)
-			if err != nil {
-				logger.Error("qreader", "error", err.Error())
-			} else {
-				logger.Info("qreader created")
+				wrt, err = qwriter.New(acfg.ClientId, acfg.ChannelName, rb.Ch, logger)
+				if err != nil {
+					logger.Error("qwriter", "error", err.Error())
+				} else {
+					logger.Info("qwriter created")
+				}
+
+				rdr, err = qreader.New(acfg.ClientId, acfg.ChannelName, rb.Ch, logger)
+				if err != nil {
+					logger.Error("qreader", "error", err.Error())
+				} else {
+					logger.Info("qreader created")
+				}
 			}
-		}
-		if err != nil {
-			//попробуем еще раз после паузы
-			time.Sleep(time.Second * 5)
+			if err != nil {
+				//попробуем еще раз после паузы
+				time.Sleep(time.Second * 5)
+			}
 		}
 	}
 
 	err = fmt.Errorf("dummy")
 	for err != nil {
-		port, err = comport.New(acfg.PortName, 9600, logger)
-		if err != nil {
-			logger.Error("com port open", "error", err)
+		select {
+		case <-ctx.Done():
+			logger.Info("shutting down")
+			return nil, nil, nil, nil
+		default:
+			port, err = comport.New(acfg.PortName, 9600, logger)
+			if err != nil {
+				logger.Error("com port open", "error", err)
+			}
 		}
 	}
 

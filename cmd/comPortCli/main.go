@@ -7,8 +7,6 @@ import (
 	"context"
 	"log"
 	"log/slog"
-
-	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -26,38 +24,42 @@ func main() {
 	defer mcancel()
 
 	go app.CtrlC(mctx, mcancel, logger)
-
-	// wctx, wcancel := context.WithCancel(mctx) //create a context for work loop
-	// defer wcancel()
-
-	sig := make(chan struct{})
-
 	for {
-		rb, wrt, rdr, port := app.Connect(&acfg, logger)
+		logger.Debug("start working loop")
+
+		wrtsig := make(chan struct{})
+		rdrsig := make(chan struct{})
+
+		wctx, wcancel := context.WithCancel(mctx) //create a context for work loop
+		defer wcancel()
+
+		rb, wrt, rdr, port := app.Connect(wctx, &acfg, logger)
+		if rb == nil {
+			logger.Error("connection procedure interrupted, app will quit") // can't connect to port
+			return
+		}
 		defer rb.Close()
 
-		g, ctx := errgroup.WithContext(mctx)
-
-		g.Go(port.ComToQueue(ctx))
-		g.Go(port.QueueToCom(ctx))
-		g.Go(wrt.Listen(ctx, port.ReadData))
-		g.Go(rdr.Listen(ctx, port.WriteData))
-
-		go func() {
-			err := g.Wait()
-			if err != nil {
-				sig <- struct{}{}
-			}
-		}()
+		go port.ComToQueue(wctx)
+		go port.QueueToCom(wctx)
+		go wrt.Listen(wctx, port.ReadData, wrtsig)
+		go rdr.Listen(wctx, port.WriteData, rdrsig)
 
 		select {
 		case <-mctx.Done():
+			wcancel()
 			time.Sleep(time.Second)
 			logger.Info("all done, bye-bye")
 			return
-		case <-sig:
+		case <-wrtsig:
+			wcancel()
+			time.Sleep(time.Second)
+			//reconnecting
+		case <-rdrsig:
+			wcancel()
+			time.Sleep(time.Second)
 			//reconnecting
 		}
+		logger.Warn("reconnecting")
 	}
-
 }

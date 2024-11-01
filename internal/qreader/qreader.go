@@ -2,8 +2,6 @@ package qreader
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -62,16 +60,17 @@ func New(name, chanName string, ch *amqp.Channel, logger *slog.Logger) (*QReader
 	return &r, err
 }
 
-func (r *QReader) Listen(ctx context.Context, data chan []byte) error {
+func (r *QReader) Listen(ctx context.Context, data chan []byte, sig chan struct{}) {
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Warn("queuereader stop listen ", "port", r.Name)
-			return nil
+			r.logger.Warn("context canceled, queuereader stop listen ", "port", r.Name)
+			return
 		case message, ok := <-r.Messages:
 			if !ok {
 				r.logger.Warn("queue message channel closed, qreader stop listen ", "channel", r.Name)
-				return fmt.Errorf("queuewriter:%w", errors.New("queue message channel closed"))
+				close(sig) //оповещаем все что произошла ошибка чтения из очереди
+				return
 			}
 			if message.Headers["ReplyTo"] != r.Name {
 				r.logger.Debug("received message", "message", message.Body, "from", message.Headers["ReplyTo"])

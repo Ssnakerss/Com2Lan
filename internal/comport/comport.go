@@ -41,7 +41,8 @@ func (c *Com) ComToQueue(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Warn("ComToQueue stop listen ", "port", c.name)
+			c.logger.Warn("context canceled, com-to-queue stop listen ", "port", c.name)
+			c.Close()
 			return
 		default:
 			data, err := reader.ReadBytes(0x03)
@@ -62,7 +63,8 @@ func (c *Com) QueueToCom(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Warn("QueueToCom stop listen ", "port", c.name)
+			c.logger.Warn("context canceled, queue-to-com stop listen ", "port", c.name)
+			c.Close()
 			return
 		case data := <-c.WriteData:
 			c.logger.Info("write", "port", c.name, "data", string(data))

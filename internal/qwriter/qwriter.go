@@ -2,8 +2,6 @@ package qwriter
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -35,21 +33,25 @@ func New(name, chanName string, ch *amqp.Channel, logger *slog.Logger) (*QWriter
 	return &s, err
 }
 
-func (s *QWriter) Listen(ctx context.Context, data chan []byte) error {
+func (s *QWriter) Listen(ctx context.Context, data chan []byte, sig chan struct{}) {
 	for {
 		select {
 		case <-ctx.Done():
 			s.logger.Warn("context canceled, queuewriter stop listen ", "channel", s.Name)
-			return nil
+			return
 		case data, ok := <-data:
 			if !ok {
 				s.logger.Warn("input channel closed, queuewriter stop listen ", "channel", s.Name)
-				return fmt.Errorf("queuewriter:%w", errors.New("input channel closed"))
+				close(sig)
+				return
 			}
+
 			s.logger.Debug("sending ", "message", string(data))
 			err := s.Send(string(data))
 			if err != nil {
 				s.logger.Error("queuewriter send error", "channel", s.Name, "error", err)
+				close(sig)
+				return
 			}
 		}
 	}
